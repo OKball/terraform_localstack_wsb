@@ -1,0 +1,68 @@
+name: LocalStack Deployment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+          - 4571:4571
+        options: >-
+          --env SERVICES=s3,dynamodb,lambda,apigateway
+          --env DEBUG=1
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install boto3 localstack-client
+
+    - name: Wait for LocalStack to be ready
+      run: |
+        until curl -s http://localhost:4566/_localstack/health | grep "\"s3\": \"running\""; do
+          echo "Waiting for LocalStack to be ready..."
+          sleep 5
+        done
+
+    - name: Deploy to LocalStack
+      run: |
+        # Example Python script to create an S3 bucket
+        cat <<EOF > deploy.py
+        import boto3
+
+        s3 = boto3.client(
+            's3',
+            endpoint_url='http://localhost:4566',
+            aws_access_key_id='test',
+            aws_secret_access_key='test'
+        )
+
+        s3.create_bucket(Bucket='my-bucket')
+        print("Bucket created successfully")
+        EOF
+
+        python deploy.py
+
+    - name: Run tests
+      run: |
+        # Run your tests here
+        echo "Running tests..."
